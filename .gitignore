@@ -1,0 +1,7 @@
+data
+__pycache__
+Session.vim
+cache
+imgs
+*.swp
+third_party

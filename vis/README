@@ -1,0 +1,2 @@
+首先写入 vis.json 文件，其中格式一个是image_id，一个是Caption的句子。然后将id对应的图片放入imgs文件夹下，名字为 img{id}.jpg
+最后运行 python3 -m SimpleHttpServer就可以执行了。
