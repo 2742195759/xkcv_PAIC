@@ -91,13 +91,12 @@ def normal_train(model_name, args, save=None, load=None):
                 print ('[epoch:{epoch}, step:{bid} / totstep:{tot}] eval = {eval_str}'.format(epoch=epoch, bid=bid, tot=steps, eval_str=model.eval_test(dataset.get_testset())))
             if ((bid+1) % args.loss_interval == 0): 
                 print ('[epoch:{epoch}, step:{bid} / totstep:{tot}] loss = {loss_str}'.format(epoch=epoch, bid=bid, tot=steps ,loss_str=str(loss)))
-        
         tot_loss /= tot
         print ('[epoch:{epoch}, step:{bid}] {eval_str}'.format(epoch=epoch, bid=bid, eval_str=model.eval_test(dataset.get_testset())))
         print ('[epoch:{epoch}]  tot loss:{tot_loss}'.format(epoch=epoch, tot_loss=tot_loss))
         print ('[BEST epoch:{epoch}] {eval_str}'.format(epoch=epoch, bid=bid, eval_str=model.best_result()))
 
-    if save :
-        xkcv_model.save_xkmodel(model, save)
+        if save :
+            xkcv_model.save_xkmodel(model, save)
 
     return model

@@ -15,6 +15,7 @@
 #  比如：数据集中，单词的vocab_size是会影响模型的参数的。所以我们要把这部分处理写入 model_related_process中，这部分要尽量简单，否则简化数据集测试不方便。
 #        但是一些不会影响的就无所谓，比如cnn处理部分。不同的数据集也是不影响模型的。
 ###########
+
 import import_path
 from torchvision import transforms
 from torchvision.models import resnet101

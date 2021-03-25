@@ -99,6 +99,8 @@ class DelayArgProcessor:
     def process(self, input_args) : 
         self.args.append(input_args)
         if len(self.args) == self.n : 
+            import pdb
+            #pdb.set_trace()
             if self._check_ :
                 try : 
                     res = [ self._check_(i) for i in self.args ]

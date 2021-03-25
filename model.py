@@ -143,7 +143,7 @@ class AestheticFeatureLayer(torch.nn.Module): # XXX (独立的 lr)
         self.inception = inception_v3(pretrained=True)
 
         " ====== feature vector "
-        self.mlsp = [None] * 11
+        self.mlsp = [None] * 6
         self.features = None
 
         " ====== register hook"
@@ -164,19 +164,19 @@ class AestheticFeatureLayer(torch.nn.Module): # XXX (独立的 lr)
         self.resnet1._modules.get('avgpool').register_forward_hook(resnet_avgpool)
         reg_list = [
             (0, 'Mixed_5b'),
-            (1, 'Mixed_5c'),
+            #(1, 'Mixed_5c'),
             (2, 'Mixed_5d'),
-            (3, 'Mixed_6a'),
+            #(3, 'Mixed_6a'),
             (4, 'Mixed_6b'),
-            (5, 'Mixed_6c'),
+            #(5, 'Mixed_6c'),
             (6, 'Mixed_6d'),
-            (7, 'Mixed_6e'),
+            #(7, 'Mixed_6e'),
             (8, 'Mixed_7a'),
-            (9, 'Mixed_7b'),
+            #(9, 'Mixed_7b'),
             (10,'Mixed_7c'),
         ]
         for idx, name in reg_list:
-            register_helper(idx, name)
+            register_helper(idx//2, name)
 
     def first_channel(self, images, patches):
         """
@@ -194,21 +194,49 @@ class AestheticFeatureLayer(torch.nn.Module): # XXX (独立的 lr)
             @ret   : 
                 (N, 10084)
         """
-        import pdb
-        #pdb.set_trace()
         self.inception(images)
         " N C W H  -> N C 1 1  -> N C -> concat"
         result = []
         for item in self.mlsp:
             gap = torch.nn.AvgPool2d((item.shape[2], item.shape[3]))
-            result.append(gap(item).squeeze())
-        self.mlsp = [None] * 11
+            result.append(gap(item).squeeze(2).squeeze(2)) 
+        #import pdb
+        #pdb.set_trace()
+        self.mlsp = [None] * 6
         return torch.cat(result, dim=1)
 
     def get_feature_dim(self):
-        return 10048 + 2048
+        return 5408 + 2048
 
     def forward(self, images, patches=None):
+        self.resnet1.eval()
+        self.inception.eval()
         t1, t2 = self.first_channel(images, patches)
-        t3 = self.MLSP_feature    (images)
+        t3 = self.MLSP_feature     (images)
         return t1, t2, t3
+
+class FC3(torch.nn.Module):
+    def __init__(self, n_input):
+        self.stack1 = torch.nn.Sequence(
+            torch.nn.Linear(n_input, n_input), 
+            torch.nn.BatchNorm1d(n_input), 
+            torch.nn.Dropout(0.25), 
+        )
+        self.stack2 = torch.nn.Sequence(
+            torch.nn.Linear(n_input, n_input // 2), 
+            torch.nn.BatchNorm1d(n_input//2), 
+            torch.nn.Dropout(0.25), 
+        )
+        self.stack3 = torch.nn.Sequence(
+            torch.nn.Linear(n_input//2, n_input // 8), 
+            torch.nn.BatchNorm1d(n_input//8), 
+            torch.nn.Dropout(0.5), 
+        )
+
+    def forward(self, x):
+        x = self.stack1(x)
+        x = self.stack2(x)
+        x = self.stack3(x)
+        return x
+
+

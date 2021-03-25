@@ -6,27 +6,29 @@ Debug = True
 
 def get_args():
     args = space()
-    args.batchsize = 30 
+    args.batchsize = 15
     args.seed = 2019
-    args.epochs = 25
-    args.device = 'cuda:1'
+    args.epochs = 10 
+    args.device = 'cuda:0'
     args.optimizer_name = 'sgd'
-    args.optimizer_lr = 0.005
-    args.optimizer_momentum = 0.2
-    args.optimizer_weightdecay=0
-    args.eval_interval = 20000
-    args.loss_interval = 10000
+    args.optimizer_lr = 0.0010
+    args.optimizer_momentum = 0.9
+    args.optimizer_weightdecay = 0.00001
+    args.clip_value = 1.0
+    args.clip_type = 2.0
+    args.eval_interval = 100000
+    args.loss_interval = 30
     args.debug = True
     args.save_path = 'UserCaption.pth'
-    args.load_path = None #'UserCaption.pth'
+    args.load_path = 'UserCaption.pth'
 
     " -------------- field related args----------------- "
     args.n_cap_len = 17
     args.n_filter_freq = 5
     args.n_word_dim = 800
-    args.n_img_dim = 10048
-    args.n_user_dim = 5
-    args.n_hidden = 2000
+    args.n_img_dim = 5408
+    args.n_user_dim = 500
+    args.n_hidden = 400
 
     " -------------- Model Control Related ------------- "
     args.model_name = 'User_Caption'

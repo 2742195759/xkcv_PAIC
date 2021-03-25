@@ -69,15 +69,25 @@ class xkcv_model(torch.nn.Module) :
         raise NotImplementedError()
         pass
 
+    def apply_grad_clip(self):
+        for group in self.optimizer.param_groups:
+            for p in group["params"]:
+                torch.nn.utils.clip_grad_norm_(p, self.clip_value, self.clip_type)
+                #torch.nn.utils.clip_grad_value_(p, self.clip_value)
+
+
     def train_step(self, input_batch, batch=None, bid=None):
         """
             train_step，see it in [](https://pytorch-cn.readthedocs.io/zh/latest/package_references/torch-optim/)
         """
         #XXX must add the self.train()
         self.train()
-
         self.optimizer.zero_grad()
         loss = self._step_loss(input_batch, batch, bid)
+        if (torch.isnan(loss)):
+            raise Exception("Loss become NaN, Exit Abnormal")
+
+        self.apply_grad_clip()
         loss.backward()
         self.optimizer.step()
 
@@ -105,6 +115,8 @@ class xkcv_model(torch.nn.Module) :
 class User_Caption(xkcv_model):
     def __init__(self, args):
         super(User_Caption, self).__init__()
+        self.clip_value = args.clip_value
+        self.clip_type = args.clip_type
         self.dictionary = args.dictionary
         self.batch_size = args.batchsize
         self.device = torch.device(args.device)
@@ -126,16 +138,21 @@ class User_Caption(xkcv_model):
         self.aesthetic_layer = model.AestheticFeatureLayer()
         # XXX 初始化变量要reset_parameter中添加
         self.reset_parameter()
-        self.optimizer = xkcv_optimizer.get_instance(self, args) # XXX 一定要在 所有parameter之后
         self._best = xk_Maximize(['Bleu_4', 'Bleu_3', 'Bleu_2', 'Bleu_1', 'ROUGE_L'], [0.0]*5)
 
         def compare_cos(v_a, v_b):
             #pdb.set_trace()
             assert (isinstance(v_a, torch.Tensor))
             assert (isinstance(v_b, torch.Tensor))
-            print  ('similarity is : ', torch.nn.CosineSimilarity(0)(v_a, v_b))
+            print  ('similarity is : ', torch.nn.CosineSimilarity(1)(v_a, v_b))
 
         self.compare = DelayArgProcessor(2, compare_cos)
+
+        "-------------- frozen the backbone ---------------"
+        for name, param in self.aesthetic_layer.named_parameters():
+            param.requires_grad = False
+
+        self.optimizer = xkcv_optimizer.get_instance(self, args) # XXX 一定要在 所有parameter之后
 
     def reset_parameter(self):
         #self.wei_user = init.normal_(self.wei_user, mean=0.0, std=1.0)
@@ -151,6 +168,7 @@ class User_Caption(xkcv_model):
             @return     : np.array()  .shape = (self.bs, self.fdim)
         """
         # TODO (try different loss function, the basic is to use tag-predict crossentropy like loss)
+        ...
 
     def forward(self, input_batch):
         """
@@ -161,10 +179,17 @@ class User_Caption(xkcv_model):
             prob : .type=tensor  .shpae=[batch, n_vocab_size] 每个数字表示 n_voc的logits，n_voc是拓展之后的voc size
             pred_seq : [ words ]
         """
+        import pdb
+#        pdb.set_trace()
         n_batch = input_batch.img_feat.shape[0]
+
         _0, _1, _2, = self.aesthetic_layer(input_batch.img_feat.to(device=self.device))
         raw_img_feat = _2
         user_embedding = self.wei_user(input_batch.uid.to(dtype=torch.long, device=self.device)) # (n_user_dim,)
+        if not self.training:
+            #import pdb
+            #pdb.set_trace()
+            self.compare.process(user_embedding)
         """
             img_feat.shape = [n_batch, n_img_dim + n_user_dim]
         """
@@ -179,15 +204,11 @@ class User_Caption(xkcv_model):
         captions = []
         hiddens = []
         captions.append(self.n_voc_size-2)
-        input_wid = torch.full((n_batch, 1), self.n_voc_size-2)              # size-2 <SOS> size-1 <EOS>
+        input_wid = torch.full((n_batch, 1), self.n_voc_size-2).long().to(device=self.device)              # size-3 <SOS> size-1 <EOS>
+        output, (h0, c0) = self.cond_lstm(img_input, (h0,c0)) 
         idx = 0
         while (input_wid != self.n_voc_size-1).any() and len(hiddens) < self.n_cap_len:
-            lstm_input = None
-            if idx == 0:
-                lstm_input = img_input
-            else : 
-                lstm_input = torch.transpose(self.word_emb(input_wid.to(device=self.device)), 0, 1) # n_step, n_batch, dim
-
+            lstm_input = torch.transpose(self.word_emb(input_wid.to(device=self.device)), 0, 1) # n_step, n_batch, dim
             output, (h0, c0) = self.cond_lstm(lstm_input, (h0,c0)) 
             hiddens.append(output)
             if self.training:
@@ -223,11 +244,16 @@ class User_Caption(xkcv_model):
             NOTE:(DEBUG/FIXED)
                 这里h[i]是第i个输入得到的结果。所以h[i]应该和cap_seq[i+1]比较结果
         """
+        import pdb
+        #pdb.set_trace()
+        tot_num = 0
         for i, ht in enumerate(h[:-1]): # TODO(check) <EOS>怎么考虑,然后Loss计算要考虑后面的吗。
             indexes = (range(n_batch), input_batch.cap_seq[:,i+1])  # 同一个step中，所有的batch的gt对应的prob选取出来。
+            masks = (input_batch.cap_seq[:,i] != (self.n_voc_size - 1)).float().to(device=self.device)
+            tot_num += masks.sum()
             tmp = -torch.log(softmax((self.wei_WP(ht)))[indexes].squeeze())   # TODO(check) 所有都是加起来吗? , tmp.shape = (n_batch,)
-            loss += tmp.mean()
-        loss /= len(h[:-1])
+            loss += (tmp * masks).sum()
+        loss /= tot_num
         #self.compare.process(h0[0,0,:])
         return loss * 1.0
 #TODO (将id->seq变成一个函数)
@@ -265,6 +291,8 @@ class User_Caption(xkcv_model):
                 input_batch.img_feat = imagefeat
                 input_batch.cap_seq = cap_seq
                 assert(not self.training)
+                import pdb
+                #pdb.set_trace()
                 _, output = self(input_batch)
                 # TODO (make use of output and gt and calculate the score)
                 output_str = " ".join([ self.dictionary[i] for i in output if i < len(self.dictionary.token2id)][1:])
